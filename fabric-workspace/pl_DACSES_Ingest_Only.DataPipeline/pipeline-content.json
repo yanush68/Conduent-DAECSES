@@ -1,0 +1,237 @@
+{
+  "properties": {
+    "description": "Ingest-only pipeline. Copies every T-series table (and t_reference) from SQL Server source (DACSES_POC_Source) into SourceLH as Delta tables. Run this before the stand-alone DACSES_Fabric_Transformations.ipynb notebook (which expects raw T-tables in SourceLH and does 100% of the transform itself).",
+    "activities": [
+      {
+        "name": "Set_RunDate",
+        "type": "SetVariable",
+        "dependsOn": [],
+        "policy": { "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "variableName": "RunDate",
+          "value": {
+            "value": "@formatDateTime(utcNow(), 'yyyy-MM-dd')",
+            "type": "Expression"
+          }
+        }
+      },
+
+      {
+        "name": "Ingest_Source_Tables",
+        "description": "ForEach over SourceTables — parallel Copy SQL Server -> SourceLH Delta with Overwrite.",
+        "type": "ForEach",
+        "dependsOn": [
+          { "activity": "Set_RunDate", "dependencyConditions": [ "Succeeded" ] }
+        ],
+        "typeProperties": {
+          "items": {
+            "value": "@pipeline().parameters.SourceTables",
+            "type": "Expression"
+          },
+          "isSequential": false,
+          "batchCount": 6,
+          "activities": [
+            {
+              "name": "Copy_T_Table_To_Lakehouse",
+              "type": "Copy",
+              "policy": {
+                "timeout": "0.01:00:00",
+                "retry": 2,
+                "retryIntervalInSeconds": 30,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "source": {
+                  "type": "SqlServerSource",
+                  "sqlReaderQuery": {
+                    "value": "SELECT * FROM dbo.@{item().table}",
+                    "type": "Expression"
+                  },
+                  "partitionOption": "None"
+                },
+                "sink": {
+                  "type": "LakehouseTableSink",
+                  "tableActionOption": "Overwrite"
+                },
+                "enableStaging": false,
+                "translator": {
+                  "type": "TabularTranslator",
+                  "typeConversion": true,
+                  "typeConversionSettings": {
+                    "allowDataTruncation": false,
+                    "treatBooleanAsNumber": false
+                  }
+                },
+                "datasetSettings": {
+                  "source": {
+                    "type": "SqlServerTable",
+                    "schema": "dbo",
+                    "table": { "value": "@item().table", "type": "Expression" },
+                    "linkedService": {
+                      "name": "SqlServerSourceLS",
+                      "properties": {
+                        "type": "SqlServer",
+                        "typeProperties": {
+                          "connectionString": {
+                            "value": "@pipeline().parameters.SqlServerSourceConn",
+                            "type": "Expression"
+                          },
+                          "authenticationType": "SQL"
+                        },
+                        "connectVia": {
+                          "referenceName": {
+                            "value": "@pipeline().parameters.OnPremIRName",
+                            "type": "Expression"
+                          },
+                          "type": "IntegrationRuntimeReference"
+                        }
+                      }
+                    }
+                  },
+                  "sink": {
+                    "type": "LakehouseTable",
+                    "typeProperties": {
+                      "schema": "dbo",
+                      "table": { "value": "@item().table", "type": "Expression" }
+                    },
+                    "linkedService": {
+                      "name": "SourceLakehouseLS",
+                      "properties": {
+                        "type": "Lakehouse",
+                        "typeProperties": {
+                          "workspaceId": {
+                            "value": "@pipeline().DataFactory",
+                            "type": "Expression"
+                          },
+                          "artifactId": {
+                            "value": "@pipeline().parameters.SourceLakehouseId",
+                            "type": "Expression"
+                          },
+                          "rootFolder": "Tables"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+
+      {
+        "name": "Validate_Source_Row_Counts",
+        "description": "Quick row-count audit per ingested table — written to SourceLH as ingest_audit so downstream notebooks (or eyeballs) can verify the snapshot.",
+        "type": "ForEach",
+        "dependsOn": [
+          { "activity": "Ingest_Source_Tables", "dependencyConditions": [ "Succeeded" ] }
+        ],
+        "typeProperties": {
+          "items": {
+            "value": "@pipeline().parameters.SourceTables",
+            "type": "Expression"
+          },
+          "isSequential": true,
+          "activities": [
+            {
+              "name": "Lookup_RowCount",
+              "type": "Lookup",
+              "policy": {
+                "timeout": "0.00:10:00",
+                "retry": 1,
+                "retryIntervalInSeconds": 15,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "source": {
+                  "type": "SqlServerSource",
+                  "sqlReaderQuery": {
+                    "value": "SELECT '@{item().table}' AS table_name, COUNT_BIG(*) AS row_count FROM dbo.@{item().table}",
+                    "type": "Expression"
+                  }
+                },
+                "firstRowOnly": true,
+                "datasetSettings": {
+                  "type": "SqlServerTable",
+                  "schema": "dbo",
+                  "table": { "value": "@item().table", "type": "Expression" },
+                  "linkedService": {
+                    "name": "SqlServerSourceLS",
+                    "properties": {
+                      "type": "SqlServer",
+                      "typeProperties": {
+                        "connectionString": {
+                          "value": "@pipeline().parameters.SqlServerSourceConn",
+                          "type": "Expression"
+                        },
+                        "authenticationType": "SQL"
+                      },
+                      "connectVia": {
+                        "referenceName": {
+                          "value": "@pipeline().parameters.OnPremIRName",
+                          "type": "Expression"
+                        },
+                        "type": "IntegrationRuntimeReference"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+
+      {
+        "name": "On_Failure_Notify",
+        "type": "Office365Outlook",
+        "dependsOn": [
+          { "activity": "Ingest_Source_Tables",        "dependencyConditions": [ "Failed" ] },
+          { "activity": "Validate_Source_Row_Counts",  "dependencyConditions": [ "Failed" ] }
+        ],
+        "policy": { "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "to":      { "value": "@pipeline().parameters.NotifyEmail", "type": "Expression" },
+          "subject": { "value": "@concat('DACSES Ingest FAILED: ', pipeline().RunId)", "type": "Expression" },
+          "body":    { "value": "@concat('Pipeline pl_DACSES_Ingest_Only failed. RunId=', pipeline().RunId, ' at ', utcNow())", "type": "Expression" }
+        }
+      }
+    ],
+
+    "parameters": {
+      "SourceLakehouse":      { "type": "string", "defaultValue": "SourceLH" },
+      "SourceLakehouseId":    { "type": "string", "defaultValue": "44444444-4444-4444-4444-444444444444" },
+      "SqlServerSourceConn":  { "type": "string", "defaultValue": "Server=tcp:dacses-src.contoso.local,1433;Database=DACSES_POC_Source;User ID=etl_reader;Password=<from-keyvault>;Encrypt=true;" },
+      "OnPremIRName":         { "type": "string", "defaultValue": "" },
+      "NotifyEmail":          { "type": "string", "defaultValue": "etl-ops@conduent.com" },
+      "SourceTables": {
+        "type": "array",
+        "defaultValue": [
+          { "table": "T1005_LS_LIC_MATCH" },
+          { "table": "T1018_SS_DEBT" },
+          { "table": "T1038_FTIN_ELIG" },
+          { "table": "T1043_PART" },
+          { "table": "T1044_CASE" },
+          { "table": "T1045_AP_EXT" },
+          { "table": "T1048_SUB_ACCT" },
+          { "table": "T1049_COURT_ORDER" },
+          { "table": "T1050_ORD_SUB_ACCT" },
+          { "table": "T1051_PART_ADDRESS" },
+          { "table": "T1052_ORD_CHLD_INC" },
+          { "table": "T1074_EVENT" },
+          { "table": "T1082_CASE_PART" },
+          { "table": "T1096_PATERNITY" },
+          { "table": "t_reference" }
+        ]
+      }
+    },
+
+    "variables": {
+      "RunDate": { "type": "String", "defaultValue": "1900-01-01" }
+    },
+
+    "annotations": [ "DACSES", "Ingest", "POC", "SQLServer2022" ]
+  }
+}

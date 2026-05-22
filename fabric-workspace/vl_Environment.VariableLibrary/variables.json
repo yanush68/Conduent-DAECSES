@@ -1,0 +1,57 @@
+{
+  "name": "vl_Environment",
+  "properties": {
+    "variables": [
+      {
+        "name": "SourceLakehouseName",
+        "type": "String",
+        "value": "SourceLH",
+        "note": "Override per environment (e.g. SourceLH_Prod)."
+      },
+      {
+        "name": "TargetLakehouseName",
+        "type": "String",
+        "value": "TargetLH"
+      },
+      {
+        "name": "ConversionDate",
+        "type": "String",
+        "value": "2026-05-06"
+      },
+      {
+        "name": "DelawareDefaultFips",
+        "type": "String",
+        "value": "1000000"
+      },
+      {
+        "name": "NotifyEmail",
+        "type": "String",
+        "value": "etl-ops@conduent.com"
+      }
+    ],
+    "valueSets": [
+      {
+        "name": "Dev",
+        "overrides": [
+          { "name": "SourceLakehouseName", "value": "SourceLH_Dev" },
+          { "name": "TargetLakehouseName", "value": "TargetLH_Dev" }
+        ]
+      },
+      {
+        "name": "Test",
+        "overrides": [
+          { "name": "SourceLakehouseName", "value": "SourceLH_Test" },
+          { "name": "TargetLakehouseName", "value": "TargetLH_Test" }
+        ]
+      },
+      {
+        "name": "Prod",
+        "overrides": [
+          { "name": "SourceLakehouseName", "value": "SourceLH_Prod" },
+          { "name": "TargetLakehouseName", "value": "TargetLH_Prod" },
+          { "name": "NotifyEmail",         "value": "etl-ops-prod@conduent.com" }
+        ]
+      }
+    ]
+  }
+}

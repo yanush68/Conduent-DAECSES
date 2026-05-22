@@ -1,0 +1,455 @@
+{
+  "properties": {
+    "description": "DACSES Legacy to V-series conversion. (1) Copy T-series from SQL Server source -> SourceLH, (2) Stage simple rules via Dataflow Gen2, (3) Apply complex rules via Spark notebook, (4) Bulk load final V-series tables back into SQL Server target in FK order.",
+    "activities": [
+      {
+        "name": "Set_RunDate",
+        "type": "SetVariable",
+        "dependsOn": [],
+        "policy": { "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "variableName": "RunDate",
+          "value": {
+            "value": "@formatDateTime(utcNow(), 'yyyy-MM-dd')",
+            "type": "Expression"
+          }
+        }
+      },
+
+      {
+        "name": "Ingest_Source_Tables",
+        "description": "Pulls every T-series table from SQL Server source into SourceLH using a single ForEach + Copy activity. Replaces Mirroring with a deterministic, restartable Copy.",
+        "type": "ForEach",
+        "dependsOn": [
+          { "activity": "Set_RunDate", "dependencyConditions": [ "Succeeded" ] }
+        ],
+        "typeProperties": {
+          "items": {
+            "value": "@pipeline().parameters.SourceTables",
+            "type": "Expression"
+          },
+          "isSequential": false,
+          "batchCount": 6,
+          "activities": [
+            {
+              "name": "Copy_T_Table_To_Lakehouse",
+              "type": "Copy",
+              "policy": {
+                "timeout": "0.01:00:00",
+                "retry": 2,
+                "retryIntervalInSeconds": 30,
+                "secureOutput": false,
+                "secureInput": false
+              },
+              "typeProperties": {
+                "source": {
+                  "type": "SqlServerSource",
+                  "sqlReaderQuery": {
+                    "value": "SELECT * FROM dbo.@{item().table}",
+                    "type": "Expression"
+                  },
+                  "partitionOption": "None"
+                },
+                "sink": {
+                  "type": "LakehouseTableSink",
+                  "tableActionOption": "Overwrite"
+                },
+                "enableStaging": false,
+                "translator": {
+                  "type": "TabularTranslator",
+                  "typeConversion": true,
+                  "typeConversionSettings": {
+                    "allowDataTruncation": false,
+                    "treatBooleanAsNumber": false
+                  }
+                },
+                "datasetSettings": {
+                  "source": {
+                    "type": "SqlServerTable",
+                    "schema": "dbo",
+                    "table": { "value": "@item().table", "type": "Expression" },
+                    "linkedService": {
+                      "name": "SqlServerSourceLS",
+                      "properties": {
+                        "type": "SqlServer",
+                        "typeProperties": {
+                          "connectionString": {
+                            "value": "@pipeline().parameters.SqlServerSourceConn",
+                            "type": "Expression"
+                          },
+                          "authenticationType": "SQL"
+                        },
+                        "connectVia": {
+                          "referenceName": {
+                            "value": "@pipeline().parameters.OnPremIRName",
+                            "type": "Expression"
+                          },
+                          "type": "IntegrationRuntimeReference"
+                        }
+                      }
+                    }
+                  },
+                  "sink": {
+                    "type": "LakehouseTable",
+                    "typeProperties": {
+                      "schema": "dbo",
+                      "table": { "value": "@item().table", "type": "Expression" }
+                    },
+                    "linkedService": {
+                      "name": "SourceLakehouseLS",
+                      "properties": {
+                        "type": "Lakehouse",
+                        "typeProperties": {
+                          "workspaceId": {
+                            "value": "@pipeline().DataFactory",
+                            "type": "Expression"
+                          },
+                          "artifactId": {
+                            "value": "@pipeline().parameters.SourceLakehouseId",
+                            "type": "Expression"
+                          },
+                          "rootFolder": "Tables"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+
+      {
+        "name": "Stage_Passthrough_Dataflow",
+        "type": "RefreshDataflow",
+        "dependsOn": [
+          { "activity": "Ingest_Source_Tables", "dependencyConditions": [ "Succeeded" ] }
+        ],
+        "policy": {
+          "timeout": "0.02:00:00",
+          "retry": 1,
+          "retryIntervalInSeconds": 60,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "dataflowId": {
+            "value": "@pipeline().parameters.StagingDataflowId",
+            "type": "Expression"
+          },
+          "workspaceId": {
+            "value": "@pipeline().DataFactory",
+            "type": "Expression"
+          },
+          "notifyOption": "NoNotification"
+        }
+      },
+
+      {
+        "name": "Run_Hybrid_Notebook",
+        "type": "TridentNotebook",
+        "dependsOn": [
+          { "activity": "Stage_Passthrough_Dataflow", "dependencyConditions": [ "Succeeded" ] }
+        ],
+        "policy": {
+          "timeout": "0.04:00:00",
+          "retry": 1,
+          "retryIntervalInSeconds": 120,
+          "secureOutput": false,
+          "secureInput": false
+        },
+        "typeProperties": {
+          "notebookId": {
+            "value": "@pipeline().parameters.HybridNotebookId",
+            "type": "Expression"
+          },
+          "workspaceId": {
+            "value": "@pipeline().DataFactory",
+            "type": "Expression"
+          },
+          "parameters": {
+            "SOURCE_LAKEHOUSE": { "value": { "value": "@pipeline().parameters.SourceLakehouse", "type": "Expression" }, "type": "string" },
+            "TARGET_LAKEHOUSE": { "value": { "value": "@pipeline().parameters.TargetLakehouse", "type": "Expression" }, "type": "string" },
+            "CONVERSION_DATE": { "value": { "value": "@variables('RunDate')", "type": "Expression" }, "type": "string" }
+          }
+        }
+      },
+
+      {
+        "name": "Truncate_Target_Tables",
+        "description": "TRUNCATE in reverse FK order: VLSUP -> VOBLE -> VSORD -> VCMEM -> VCASE -> VDEMO.",
+        "type": "Script",
+        "dependsOn": [
+          { "activity": "Run_Hybrid_Notebook", "dependencyConditions": [ "Succeeded" ] }
+        ],
+        "policy": { "timeout": "0.00:30:00", "retry": 1, "retryIntervalInSeconds": 30 },
+        "typeProperties": {
+          "scripts": [
+            {
+              "type": "Query",
+              "text": "TRUNCATE TABLE dbo.VLSUP; TRUNCATE TABLE dbo.VOBLE; TRUNCATE TABLE dbo.VSORD; TRUNCATE TABLE dbo.VCMEM; TRUNCATE TABLE dbo.VCASE; TRUNCATE TABLE dbo.VDEMO;"
+            }
+          ],
+          "scriptBlockExecutionTimeout": "02:00:00",
+          "linkedServiceName": {
+            "referenceName": "SqlServerTargetLS",
+            "type": "LinkedServiceReference"
+          }
+        }
+      },
+
+      {
+        "name": "Load_VDEMO",
+        "description": "Bulk load VDEMO. No FK parents.",
+        "type": "Copy",
+        "dependsOn": [ { "activity": "Truncate_Target_Tables", "dependencyConditions": [ "Succeeded" ] } ],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30 },
+        "typeProperties": {
+          "source": { "type": "LakehouseTableSource" },
+          "sink": {
+            "type": "SqlServerSink",
+            "writeBehavior": "insert",
+            "sqlWriterUseTableLock": true,
+            "tableOption": "none"
+          },
+          "enableStaging": false,
+          "translator": { "type": "TabularTranslator", "typeConversion": true },
+          "datasetSettings": {
+            "source": {
+              "type": "LakehouseTable",
+              "typeProperties": { "schema": "dbo", "table": "VDEMO" },
+              "linkedService": { "$ref": "TargetLakehouseLS" }
+            },
+            "sink": {
+              "type": "SqlServerTable",
+              "schema": "dbo",
+              "table": "VDEMO",
+              "linkedService": { "$ref": "SqlServerTargetLS" }
+            }
+          }
+        }
+      },
+
+      {
+        "name": "Load_VCASE",
+        "description": "Bulk load VCASE. No FK parents.",
+        "type": "Copy",
+        "dependsOn": [ { "activity": "Truncate_Target_Tables", "dependencyConditions": [ "Succeeded" ] } ],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30 },
+        "typeProperties": {
+          "source": { "type": "LakehouseTableSource" },
+          "sink": { "type": "SqlServerSink", "writeBehavior": "insert", "sqlWriterUseTableLock": true, "tableOption": "none" },
+          "enableStaging": false,
+          "translator": { "type": "TabularTranslator", "typeConversion": true },
+          "datasetSettings": {
+            "source": {
+              "type": "LakehouseTable",
+              "typeProperties": { "schema": "dbo", "table": "VCASE" },
+              "linkedService": { "$ref": "TargetLakehouseLS" }
+            },
+            "sink": {
+              "type": "SqlServerTable",
+              "schema": "dbo",
+              "table": "VCASE",
+              "linkedService": { "$ref": "SqlServerTargetLS" }
+            }
+          }
+        }
+      },
+
+      {
+        "name": "Load_VCMEM",
+        "description": "Bulk load VCMEM. FK -> VCASE, VDEMO.",
+        "type": "Copy",
+        "dependsOn": [
+          { "activity": "Load_VCASE", "dependencyConditions": [ "Succeeded" ] },
+          { "activity": "Load_VDEMO", "dependencyConditions": [ "Succeeded" ] }
+        ],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30 },
+        "typeProperties": {
+          "source": { "type": "LakehouseTableSource" },
+          "sink": { "type": "SqlServerSink", "writeBehavior": "insert", "sqlWriterUseTableLock": true, "tableOption": "none" },
+          "enableStaging": false,
+          "translator": { "type": "TabularTranslator", "typeConversion": true },
+          "datasetSettings": {
+            "source": {
+              "type": "LakehouseTable",
+              "typeProperties": { "schema": "dbo", "table": "VCMEM" },
+              "linkedService": { "$ref": "TargetLakehouseLS" }
+            },
+            "sink": {
+              "type": "SqlServerTable",
+              "schema": "dbo",
+              "table": "VCMEM",
+              "linkedService": { "$ref": "SqlServerTargetLS" }
+            }
+          }
+        }
+      },
+
+      {
+        "name": "Load_VSORD",
+        "description": "Bulk load VSORD. FK -> VCASE.",
+        "type": "Copy",
+        "dependsOn": [ { "activity": "Load_VCASE", "dependencyConditions": [ "Succeeded" ] } ],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30 },
+        "typeProperties": {
+          "source": { "type": "LakehouseTableSource" },
+          "sink": { "type": "SqlServerSink", "writeBehavior": "insert", "sqlWriterUseTableLock": true, "tableOption": "none" },
+          "enableStaging": false,
+          "translator": { "type": "TabularTranslator", "typeConversion": true },
+          "datasetSettings": {
+            "source": {
+              "type": "LakehouseTable",
+              "typeProperties": { "schema": "dbo", "table": "VSORD" },
+              "linkedService": { "$ref": "TargetLakehouseLS" }
+            },
+            "sink": {
+              "type": "SqlServerTable",
+              "schema": "dbo",
+              "table": "VSORD",
+              "linkedService": { "$ref": "SqlServerTargetLS" }
+            }
+          }
+        }
+      },
+
+      {
+        "name": "Load_VOBLE",
+        "description": "Bulk load VOBLE. FK -> VSORD.",
+        "type": "Copy",
+        "dependsOn": [ { "activity": "Load_VSORD", "dependencyConditions": [ "Succeeded" ] } ],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30 },
+        "typeProperties": {
+          "source": { "type": "LakehouseTableSource" },
+          "sink": { "type": "SqlServerSink", "writeBehavior": "insert", "sqlWriterUseTableLock": true, "tableOption": "none" },
+          "enableStaging": false,
+          "translator": { "type": "TabularTranslator", "typeConversion": true },
+          "datasetSettings": {
+            "source": {
+              "type": "LakehouseTable",
+              "typeProperties": { "schema": "dbo", "table": "VOBLE" },
+              "linkedService": { "$ref": "TargetLakehouseLS" }
+            },
+            "sink": {
+              "type": "SqlServerTable",
+              "schema": "dbo",
+              "table": "VOBLE",
+              "linkedService": { "$ref": "SqlServerTargetLS" }
+            }
+          }
+        }
+      },
+
+      {
+        "name": "Load_VLSUP",
+        "description": "Bulk load VLSUP. FK -> VOBLE.",
+        "type": "Copy",
+        "dependsOn": [ { "activity": "Load_VOBLE", "dependencyConditions": [ "Succeeded" ] } ],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30 },
+        "typeProperties": {
+          "source": { "type": "LakehouseTableSource" },
+          "sink": { "type": "SqlServerSink", "writeBehavior": "insert", "sqlWriterUseTableLock": true, "tableOption": "none" },
+          "enableStaging": false,
+          "translator": { "type": "TabularTranslator", "typeConversion": true },
+          "datasetSettings": {
+            "source": {
+              "type": "LakehouseTable",
+              "typeProperties": { "schema": "dbo", "table": "VLSUP" },
+              "linkedService": { "$ref": "TargetLakehouseLS" }
+            },
+            "sink": {
+              "type": "SqlServerTable",
+              "schema": "dbo",
+              "table": "VLSUP",
+              "linkedService": { "$ref": "SqlServerTargetLS" }
+            }
+          }
+        }
+      },
+
+      {
+        "name": "Validate_Row_Counts",
+        "description": "Compare SQL Server target counts; cross-check vs Lakehouse v_conversion_audit table downstream.",
+        "type": "Script",
+        "dependsOn": [ { "activity": "Load_VLSUP", "dependencyConditions": [ "Succeeded" ] } ],
+        "policy": { "timeout": "0.00:15:00", "retry": 1 },
+        "typeProperties": {
+          "scripts": [
+            {
+              "type": "Query",
+              "text": "SELECT 'VDEMO' AS tbl, COUNT(*) AS row_count FROM dbo.VDEMO UNION ALL SELECT 'VCASE', COUNT(*) FROM dbo.VCASE UNION ALL SELECT 'VCMEM', COUNT(*) FROM dbo.VCMEM UNION ALL SELECT 'VSORD', COUNT(*) FROM dbo.VSORD UNION ALL SELECT 'VOBLE', COUNT(*) FROM dbo.VOBLE UNION ALL SELECT 'VLSUP', COUNT(*) FROM dbo.VLSUP;"
+            }
+          ],
+          "linkedServiceName": {
+            "referenceName": "SqlServerTargetLS",
+            "type": "LinkedServiceReference"
+          }
+        }
+      },
+
+      {
+        "name": "On_Failure_Notify",
+        "type": "Office365Outlook",
+        "dependsOn": [
+          { "activity": "Ingest_Source_Tables",       "dependencyConditions": [ "Failed" ] },
+          { "activity": "Stage_Passthrough_Dataflow", "dependencyConditions": [ "Failed" ] },
+          { "activity": "Run_Hybrid_Notebook",        "dependencyConditions": [ "Failed" ] },
+          { "activity": "Truncate_Target_Tables",     "dependencyConditions": [ "Failed" ] },
+          { "activity": "Load_VDEMO", "dependencyConditions": [ "Failed" ] },
+          { "activity": "Load_VCASE", "dependencyConditions": [ "Failed" ] },
+          { "activity": "Load_VCMEM", "dependencyConditions": [ "Failed" ] },
+          { "activity": "Load_VSORD", "dependencyConditions": [ "Failed" ] },
+          { "activity": "Load_VOBLE", "dependencyConditions": [ "Failed" ] },
+          { "activity": "Load_VLSUP", "dependencyConditions": [ "Failed" ] }
+        ],
+        "policy": { "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "to":      { "value": "@pipeline().parameters.NotifyEmail", "type": "Expression" },
+          "subject": { "value": "@concat('DACSES Convert FAILED: ', pipeline().RunId)", "type": "Expression" },
+          "body":    { "value": "@concat('Pipeline pl_DACSES_Convert failed. RunId=', pipeline().RunId, ' at ', utcNow())", "type": "Expression" }
+        }
+      }
+    ],
+
+    "parameters": {
+      "SourceLakehouse":      { "type": "string", "defaultValue": "SourceLH" },
+      "TargetLakehouse":      { "type": "string", "defaultValue": "TargetLH" },
+      "SourceLakehouseId":    { "type": "string", "defaultValue": "44444444-4444-4444-4444-444444444444" },
+      "TargetLakehouseId":    { "type": "string", "defaultValue": "55555555-5555-5555-5555-555555555555" },
+      "StagingDataflowId":    { "type": "string", "defaultValue": "22222222-2222-2222-2222-222222222222" },
+      "HybridNotebookId":     { "type": "string", "defaultValue": "33333333-3333-3333-3333-333333333333" },
+      "SqlServerSourceConn":  { "type": "string", "defaultValue": "Server=tcp:dacses-src.contoso.local,1433;Database=DACSES_POC_Source;User ID=etl_reader;Password=<from-keyvault>;Encrypt=true;" },
+      "SqlServerTargetConn":  { "type": "string", "defaultValue": "Server=tcp:dacses-tgt.contoso.local,1433;Database=DACSES_POC_Target;User ID=etl_writer;Password=<from-keyvault>;Encrypt=true;" },
+      "OnPremIRName":         { "type": "string", "defaultValue": "shir-dacses" },
+      "NotifyEmail":          { "type": "string", "defaultValue": "etl-ops@conduent.com" },
+      "SourceTables": {
+        "type": "array",
+        "defaultValue": [
+          { "table": "T1005_LS_LIC_MATCH" },
+          { "table": "T1018_SS_DEBT" },
+          { "table": "T1038_FTIN_ELIG" },
+          { "table": "T1043_PART" },
+          { "table": "T1044_CASE" },
+          { "table": "T1045_AP_EXT" },
+          { "table": "T1048_SUB_ACCT" },
+          { "table": "T1049_COURT_ORDER" },
+          { "table": "T1050_ORD_SUB_ACCT" },
+          { "table": "T1051_PART_ADDRESS" },
+          { "table": "T1052_ORD_CHLD_INC" },
+          { "table": "T1074_EVENT" },
+          { "table": "T1082_CASE_PART" },
+          { "table": "T1096_PATERNITY" },
+          { "table": "t_reference" }
+        ]
+      }
+    },
+
+    "variables": {
+      "RunDate": { "type": "String", "defaultValue": "1900-01-01" }
+    },
+
+    "annotations": [ "DACSES", "Conversion", "POC", "SQLServer2022" ]
+  }
+}

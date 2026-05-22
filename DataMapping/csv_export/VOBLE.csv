@@ -1,0 +1,81 @@
+VOBL Output Table,,,,,,,,,
+Target Column,Type,Source Table,Source Column,Type,Computed,Default,Rule Complexity,Rule/XW/Comment,Issue?
+General Table Rules,,,,,,,H,"Rule 1:If a court order exists (T1049) and the NCP/PF is unidentified (MCI number is 999995 and the member status in VCMEM is active) do NOT convert a SORD and OBLE.
+Rule 2:For cases where the T1044.IVD_ typ_cd = DIRP do not create a VOBLE record.
+Rule 3:If VCASE.StatusCase_CODE = C (closed) and the VOBLE.EndObligation_DATE > conversion date
+move VCASE.StatusCurrent_DATE.
+If the case is a no charge case (T1049.CHRG_FREQ_CD = NO-C and the VOBLE.EndObligation_DATE > conversion date
+move conversion date.",
+Case_IDNO,"Numb(6,0)",T1049_COURT_ORDER,CASE_NUM,"Numb(6,0)",,,,,
+OrderSeq_NUMB,"Numb(2,0)",,,,,1,,,
+ObligationSeq_NUMB,"Numb(2,0)",,,,X,,,"Rule:Starting at 1, increment by 1 for each oble record created per VSORD and per case.",
+MemberMci_IDNO,"Numb(10,0)",T1052_ORD_CHLD_INC,MCI_NUM,"Numb(10,0)",,,H,"Rule:If voble.TypeDebt_CODE  = 'SS' or 'GT' move vcmem.membermci_idno where CaseRelationShip_CODE = 'C'
+else move T1052.mci_num for the dependents. For CS obligations that are charging, the dependent(s) must be active. If not active, do not move inactive DPs.
+If moving dependents all financials need to be divided by the total number of dependents added to the obligation.
+For arrears only cases:
+Any child linked to the order  i.e. an OBLE is converted with a DP MCI, that DP  must have an active status in VCMEM.  i.e. VCMEM.CaseMemberStatus_CODE needs to be  converted to 'A'.
+For arrears only cases where NO DP is linked to the latest order in DACSES:
+If only 1 DP on case: Link that DP to the order   
+If more than 1 DP on case: 1 (or more) DPs are active - link those DPs
+    If no DPs are active and  1 or more were linked to a previous order Link those DPs from the previous order  
+    If no DPs are active and none were  ever linked to order: Link the youngest DP (if twins or triplets etc..  link all) ",
+MemberMci_IDNO,"Numb(10,0)",VCMEM,MemberMci_IDNO,"Numb(10,0)",,,H,"Rule:If voble.TypeDebt_CODE  = 'SS' or 'GT' move vcmem.membermci_idno where CaseRelationShip_CODE = 'C'
+else move T1052.mci_num for the dependents. For CS obligations that are charging, the dependent(s) must be active. If not active, do not move inactive DPs.
+If moving dependents all financials need to be divided by the total number of dependents added to the obligation.
+For arrears only cases:
+Any child linked to the order  i.e. an OBLE is converted with a DP MCI, that DP  must have an active status in VCMEM.  i.e. VCMEM.CaseMemberStatus_CODE needs to be  converted to 'A'.
+For arrears only cases where NO DP is linked to the latest order in DACSES:
+If only 1 DP on case: Link that DP to the order   
+If more than 1 DP on case: 1 (or more) DPs are active - link those DPs
+    If no DPs are active and  1 or more were linked to a previous order Link those DPs from the previous order  
+    If no DPs are active and none were  ever linked to order: Link the youngest DP (if twins or triplets etc..  link all) ",
+TypeDebt_CODE,Char(2),T1050_ORD_SUB_ACCT,SUB_TYP_CD,Char(6),,,,Charge frequency LOV table lookup,Length
+Fips_CODE,Char(7),T1048_SUB_ACCT,URESA_CD,"Numb(7,0)",,,M,"Rule:If T1048.sub_typ_cd = OSTATA, then move T1048_uresa_cd.  Use state fips followed by 5 zeroes.
+If client mailing address payment fips code > 0(T1051.PAYMENT_FIPS_CD WHERE ADD_TYP_CD = 'MAIL'), move T1051_payment_fips cd. Use state fips followed by all zeroes.
+If neither condition exists, default to 1000000 (Delaware fips).",Type
+Fips_CODE,Char(7),T1051_PART_ADDRESS,PAYMENT_FIPS_CD,"Numb(9,0)",X,,M,"Rule:If T1048.sub_typ_cd = OSTATA, then move T1048_uresa_cd.  Use state fips followed by 5 zeroes.
+If client mailing address payment fips code > 0(T1051.PAYMENT_FIPS_CD WHERE ADD_TYP_CD = 'MAIL'), move T1051_payment_fips cd. Use state fips followed by all zeroes.
+If neither condition exists, default to 1000000 (Delaware fips).",
+FreqPeriodic_CODE,Char(1),T1049_COURT_ORDER,CHRG_FREQ_CD,Char(4),,,M,"Rule:A handful of No charge cases are not updated correctly in the DACSES court order record. 
+Where the case (T1044) has a No charge in field CHARGE_FREQ_CD, this field will be used to override the incorrect frequency and be converted accordingly.
+Where the debt type is GT (APFEES) move O (one-time)
+Charge frequency table lookup",Length
+Periodic_AMNT,"Numb(11,2)",T1050_ORD_SUB_ACCT,FREQ_AMT,"Numb(10,2)",,,H,"Rule:For SPLSUP, CURSUP, MEDSUP move Freq_amt, else move 0.
+CR 67:
+If there is more than 1 DP on an open ended obligation:
+And it is a IVD case with a Delaware order(ISSUINGORDERFIPS_CODE  = 100000)  
+And some (not all) of the DPs are 19 or older Move 0 to the DPs that are 19 or older
+Divide the freq_amt amongst the  DPs that are younger than 19.
+If  ALL DPs on the open obligation are 19 years old or older:
+  And it is a IVD case with a Delaware order (ISSUINGORDERFIPS_CODE  = 100000)  
+Move 0 to the periodic_amnt for all DPs",
+ExpectToPay_AMNT,"Numb(11,2)",T1050_ORD_SUB_ACCT,FREQ_AMT,"Numb(10,2)",,,L,Rule:Move the corresponding arrears freq_amt into this field.  For example CUSTM1 aligns with MEDSUP and CUSTA1 aligns with CURSUP.,
+ExpectToPay_CODE,Char(1),,,,,C (court),,,
+BeginObligation_DATE,"Date(3,0)",T1049_COURT_ORDER,ORDER_START_DT,"Date(3,0)",,,L,"Rule:For obligations that have a frequency code of semi-monthly (S), use the DACSES begin month and year and default the day to 1 (1st of the month). ",
+EndObligation_DATE,"Date(3,0)",T1049_COURT_ORDER,ORDER_END_DT,"Date(3,0)",,,H,"Rule:If  ALL DPs on the open obligation are 19 years old or older:                                                                                 And it is a IVD case with a Delaware order (ISSUINGORDERFIPS_CODE  = 100000)  
+Endd date all oble's with conversion date 
+If there is more than 1 DP on an open ended obligation:
+And it is a IVD case with a Delaware order (ISSUINGORDERFIPS_CODE  = 100000)  
+And some (not all) of the DPs are 19 or older
+End date the 'old' DP(s) with conversion date
+End date the remaining DPs with high date unless:
+If the DACSES end date is 10/1/2013-4/1/2014 convert the DACSES end date.
+All other  cases (non ivd, IVD with  ISSUINGORDERFIPS_CODE  NOT equal 100000) with open ended current support - move high date to the  end date.",
+AccrualLast_DATE,"Date(3,0)",T1044_CASE,LAST_CHRG_DT,"Date(3,0)",,,,,
+AccrualNext_DATE,"Date(3,0)",T1044_CASE,NEXT_CHARGE_DT,"Date(3,0)",,,,,
+CHECKRECIPIENT_ID,Char(10),,,,X,,M,"Rule:A. If voble.FIPS_code <> '1000000' move the fips code. For South Carolina, use the T1048_uresa_cd or T1051.payment_fips_cd -whichever was used for VOBLE.Fips_CODE. 
+B. If VCMEM.MEMBERMCI_IDNO for the client = '999998' then obtain and move the related VOTHP.OtherParty_IDNO for the division of family services.
+C. If DebtType = GT (Genetic Testing)  then obtain and move the related VOTHP.OtherParty_IDNO for genetic testing.
+D. Move VCMEM.MEMBERMCI_IDNO where CaseRelationShip_CODE = 'C'  when none of the above are true.",
+CheckRecipient_CODE,Char(1),,,,X,,M,"Rule:If checkrecipient_idno represents a fips code move '2'
+If checkrecipient_idno represents an agency (FC Foster care) or type is Genetic Testing move '3'
+else move '1'.
+LOV Disbursed To, REFM GENR/FUND.",
+EventGlobalBeginSeq_NUMB,"Numb(19,0)",,,,,conversion generated,,,
+EventGlobalEndSeq_NUMB,"Numb(19,0)",,,,,0,,,
+BeginValidity_DATE,"Date(3,0)",,,,,Conversion date,,,
+EndValidity_DATE,"Date(3,0)",,,,,HIGH DATE,,,
+REASONCHANGE_CODE,Char(2),,,,,spaces,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,

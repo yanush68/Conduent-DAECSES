@@ -1,0 +1,96 @@
+{
+  "formatVersion": "202502",
+  "computeEngineSettings": {
+    "allowNativeQueries": true,
+    "fastCopy": true,
+    "stagingEnabled": true
+  },
+  "queryGroups": [
+    {
+      "id": "1",
+      "name": "Source",
+      "description": "Raw lakehouse pulls"
+    },
+    {
+      "id": "2",
+      "name": "Reference",
+      "description": "t_reference filtered subsets"
+    },
+    {
+      "id": "3",
+      "name": "Staged",
+      "description": "Outputs landed into TargetLH staging tables"
+    }
+  ],
+  "queriesMetadata": {
+    "Src_T1043_PART":          { "queryGroupId": "1", "loadEnabled": false, "isHidden": false, "queryName": "Src_T1043_PART" },
+    "Src_T1044_CASE":          { "queryGroupId": "1", "loadEnabled": false, "isHidden": false, "queryName": "Src_T1044_CASE" },
+    "Src_T1049_COURT_ORDER":   { "queryGroupId": "1", "loadEnabled": false, "isHidden": false, "queryName": "Src_T1049_COURT_ORDER" },
+    "Src_T1082_CASE_PART":     { "queryGroupId": "1", "loadEnabled": false, "isHidden": false, "queryName": "Src_T1082_CASE_PART" },
+    "Src_t_reference":         { "queryGroupId": "1", "loadEnabled": false, "isHidden": false, "queryName": "Src_t_reference" },
+    "Ref_VCASE_StatusCase":    { "queryGroupId": "2", "loadEnabled": false, "isHidden": false, "queryName": "Ref_VCASE_StatusCase" },
+    "Ref_VCASE_TypeCase":      { "queryGroupId": "2", "loadEnabled": false, "isHidden": false, "queryName": "Ref_VCASE_TypeCase" },
+    "Ref_VDEMO_Race":          { "queryGroupId": "2", "loadEnabled": false, "isHidden": false, "queryName": "Ref_VDEMO_Race" },
+    "Ref_VCMEM_Relationship":  { "queryGroupId": "2", "loadEnabled": false, "isHidden": false, "queryName": "Ref_VCMEM_Relationship" },
+    "Stg_VDEMO_Simple": {
+      "queryGroupId": "3",
+      "loadEnabled": true,
+      "isHidden": false,
+      "queryName": "Stg_VDEMO_Simple",
+      "dataDestinations": [
+        {
+          "targetType": "Lakehouse",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "lakehouseId": "00000000-0000-0000-0000-000000000000",
+          "tableName": "stg_VDEMO_Simple",
+          "updateMethod": "Replace"
+        }
+      ]
+    },
+    "Stg_VCASE_Simple": {
+      "queryGroupId": "3",
+      "loadEnabled": true,
+      "isHidden": false,
+      "queryName": "Stg_VCASE_Simple",
+      "dataDestinations": [
+        {
+          "targetType": "Lakehouse",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "lakehouseId": "00000000-0000-0000-0000-000000000000",
+          "tableName": "stg_VCASE_Simple",
+          "updateMethod": "Replace"
+        }
+      ]
+    },
+    "Stg_VCMEM_Simple": {
+      "queryGroupId": "3",
+      "loadEnabled": true,
+      "isHidden": false,
+      "queryName": "Stg_VCMEM_Simple",
+      "dataDestinations": [
+        {
+          "targetType": "Lakehouse",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "lakehouseId": "00000000-0000-0000-0000-000000000000",
+          "tableName": "stg_VCMEM_Simple",
+          "updateMethod": "Replace"
+        }
+      ]
+    },
+    "Stg_VSORD_Simple": {
+      "queryGroupId": "3",
+      "loadEnabled": true,
+      "isHidden": false,
+      "queryName": "Stg_VSORD_Simple",
+      "dataDestinations": [
+        {
+          "targetType": "Lakehouse",
+          "workspaceId": "00000000-0000-0000-0000-000000000000",
+          "lakehouseId": "00000000-0000-0000-0000-000000000000",
+          "tableName": "stg_VSORD_Simple",
+          "updateMethod": "Replace"
+        }
+      ]
+    }
+  }
+}

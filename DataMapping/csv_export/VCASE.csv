@@ -1,0 +1,107 @@
+VCASE Output Table,,,,,,,,,
+Target Column,Type,Source Table,Source Column,Type,Computed,Default,Rule Complexity,Rule/Crosswalk/Comment,Issue?
+General Table Rules,,,,,,,H,"Rule:Cases not to be converted. Do not convert cases with a closing code of CDUP.
+Do not convert closed cases that have been closed more than 5 years.
+Do not convert cases with no DPs.
+Do not convert cases with multiple payees UNLESS the balances for the 'old' payees are zero or not positive.
+Do not convert cases with balances and no court order.
+Do not convert Open cases with current support (CS or MS) and no active DP linked to the obligation.
+Do not convert COLU cases.
+Do not convert foster care cases where 1 or more DPs do not have a PID.",
+Case_IDNO,"Numb(6,0)",T1044_CASE,CASE_NUM,"Numb(6,0)",,,,,
+StatusCase_CODE,Char(1),T1044_CASE,STATUS_CD,Char(4),,,L,"Rule:By moving the Legacy DACSES 4 byte status codes (OPEN, CLSD, or CTRM) to New DACSES 1 byte status code, truncation occurs. Hence, the values of O and C are moved. ",Length
+TypeCase_CODE,Char(1),T1044_CASE,IVD_TYP_CD,Char(4),,,L,"Rule:If the case is responding (T1044.INIT_RESP_ST_CD = R) and T1044.TYP_CD = FC or MAO or AFDC, default the case type to N",Length
+RsnStatusCase_CODE,Char(2),T1044_CASE,CLOSING_CD,Char(4),,,,Case Closing Codes table lookup,Length
+RespondInit_CODE,Char(1),T1044_CASE,INIT_RESP_ST_CD,Char(1),,,H,"Rule:If T1044.INIT_RESP_ST_CD = I or R and T1044.IVD_TYP_CD = DIRP or COLL, move N.
+If T1044.INIT_RESP_ST_CD = I or R and T1044.status_code = CLSD  move N.
+Else
+If T1044.INIT_RESP_ST_CD = I and the NCP does not have a mailing address (T1051.ADD_TYP_CD = MAIL) with a correspondence fips code (CORR_FIPS_CD > 0) Move N.
+If T1044.INIT_RESP_ST_CD = R and the CP does not have a mailing address (T1051.ADD_TYP_CD = MAIL) with a correspondence fips code (CORR_FIPS_CD > 0)Move N.
+Else
+If T1044.INIT_RESP_ST_CD = I or R, the member's address needs to be checked for out of country. 
+If T1044.INIT_RESP_ST_CD = I and the NCP's T1051.ADD_TYP_CD = MAIL and T1051.STATE_ADR  = XX or spaces move C
+If T1044.INIT_RESP_ST_CD = R and the CP's T1051.ADD_TYP_CD = MAIL and T1051.STATE_ADR  = XX or spaces move Y
+If none of the above are true, the crosswalk rule is followed.",
+SourceRfrl_CODE,Char(3),,,,X, ,M,"Rule:Where the case type has been converted as 'A' move S (DSS)
+Where the case type has been converted as 'F' move D (DFS)
+Where the case category has been converted as MO or PT move S.
+If none of the above, move space.",
+Opened_DATE,"Date(3,0)",T1044_CASE,STATUS_EFF_DT,"Date(3,0)",,Default date,,Rule override by using default date,
+Marriage_DATE,"Date(3,0)",,,,,LOW DATE,,,
+Divorced_DATE,"Date(3,0)",,,,,LOW DATE,,,
+StatusCurrent_DATE,"Date(3,0)",T1044_CASE,STATUS_EFF_DT,"Date(3,0)",,,,,
+AprvIvd_DATE,"Date(3,0)",T1044_CASE,STATUS_EFF_DT,"Date(3,0)",,Default date,,Rule override by using default date,
+County_IDNO,"Numb(3,0)",T1044_CASE,COUNTY_CD,Char(3),,,,,Type
+Office_IDNO,"Numb(3,0)",T1044_CASE,COUNTY_CD,Char(3),,,,,Type
+AssignedFips_CODE,Char(7),T1044_CASE,COUNTY_CD,Char(3),,,L,"Rule: First 2 bytes  move 10 (Delaware state FIPS code), next 3 bytes move T1044.county_cd, last 2 bytes move zeroes.",
+GoodCause_CODE,Char(1),T1044_CASE,GOOD_CAUSE_RSN_CD,Char(4),,,L,"Rule: If the case type is AFDC or MAO and the good_cause_rsn_cd is not spaces or nulls, move A to GoodCause_CODE and use the non coop crosswalk to populate NonCoop_CODE.",Length
+GoodCause_DATE,"Date(3,0)",T1074_EVENT,CREATE_DT,"Date(3,0)",,Default Good Casue Date,,,
+Restricted_INDC,Char(1),,,,X,N,,,
+Intercept_CODE,Char(1),,,,X,,H,"Rule:This case level indicator uses B - where tax offset has been submitted for state and federal, I for federal only, and S for state only.
+When reading T1038, the tax_int_sts_cd must be in ('URRS','SUBM') and the archive date must be high date (9999-12-31).
+Move B WHEN ((T1038.NPA_ELIG_IND = 'Y' AND NPA_ARREARS_AMT > 0) OR (T1038.AFDC_ELIG_IND = 'Y' AND AFDC_ARREARS_AMT > 0)) AND (T1038.STX_LOT_ELIG_IND = 'Y' AND STAX_ARREARS_AMT > 0) 
+Move  I  WHEN (T1038.NPA_ELIG_IND = 'Y' AND NPA_ARREARS_AMT > 0) OR (T1038.AFDC_ELIG_IND = 'Y' AND AFDC_ARREARS_AMT > 0)
+Move S WHEN (T1038.STX_LOT_ELIG_IND = 'Y' AND STAX_ARREARS_AMT > 0) ELSE ""N""",
+MedicalOnly_INDC,Char(1),T1044_CASE,MED_SUP_ONLY_IND,Char(1),,,,,
+Jurisdiction_INDC,Char(1),,,,,spaces,,,
+IvdApplicant_CODE,Char(3),,,,,spaces,,,
+Application_IDNO,"Numb(15,0)",,,,,0,,,
+AppSent_DATE,"Date(3,0)",T1044_CASE,APPL_PROVIDED_DT,"Date(3,0)",,,,,
+AppReq_DATE,"Date(3,0)",T1044_CASE,APPL_REQ_DT,"Date(3,0)",,,,,
+AppRetd_DATE,"Date(3,0)",T1044_CASE,APPL_RETURN_DT,"Date(3,0)",,,,,
+CpRelationshipToNcp_CODE,Char(3),,,,,SPACES,,,
+Worker_ID,Char(30),T1044_CASE,RESP_WORKER_ID,Char(4),,,,,
+AppSigned_DATE,"Date(3,0)",T1044_CASE,APPL_RETURN_DT,"Date(3,0)",,,L,"Rule:Where applicationfee_code: 
+Has been set to  P  and  the  APPL_RETURN_DT  is a high date use what has been converted to VCASE.opened_date 
+Has been set to space move low date",
+ClientLitigantRole_CODE,Char(2),,,,,SPACES,,,
+DescriptionComments_TEXT,Char(200),,,,,SPACES,,,
+NonCoop_CODE,Char(1),T1044_CASE,GOOD_CAUSE_RSN_CD,Char(4),,,M,"Rule: If the case type is AFDC or MAO and the unworkable reason code is UCNC  move P  to NonCoop_CODE.
+If the case type is AFDC or MAO and the good_cause_rsn_cd is not spaces or nulls, move A to GoodCause_CODE and use the non coop crosswalk to populate NonCoop_CODE.
+If the case type is AFDC or MAO and the above conditions are not met, move O to NonCoop_CODE.",Length
+NonCoop_DATE,"Date(3,0)",T1044_CASE,UNWORK_RSN_EFF_DT,"Date(3,0)",,Default t1074.create_dt,M,"Rule:If the NonCoop_CODE has been set to O, move the max  t1074.create_dt to populate VCASE.noncoop_date.
+ELSE IF
+T1044.good_cause_rsn_cd is populated, use the contents of the reason code along with T1044.case_num to fetch the T1074 and use the max  t1074.create_dt to populate VCASE.noncoop_date
+Else
+If T1044.UNWORK_RSN_CD = UCNC move UNWORK_RSN_EFF_DT.",
+NonCoop_DATE,"Date(3,0)",T1074_EVENT,CREATE_DT,"Date(3,0)",,Default Non Coop Date,,Non Coop date,
+BeginValidity_DATE,"Date(3,0)",,,,,conversion date,,,
+WorkerUpdate_ID,Char(30),,,,,conversion system worker,,,
+TransactionEventSeq_NUMB,"Numb(19,0)",,,,X,,,Conversion generated sequence number,
+Update_DTTM,"Date(8,7)",,,,,conversion date,,,
+Referral_DATE,"Date(3,0)",,,,X,,L,"Rule:Where the case type has been converted as 'A' or 'F'
+or
+Where the case category has been converted as MO or PT
+move the case open date.
+If none of the above, move low date.",
+CaseCategory_CODE,Char(2),T1044_CASE,UNWORK_RSN_CD,Char(4),,,M,"Rule:The  T1044.typ_cd   and   T1044.unwork_rsn_cd  are used together to convert to some codes:
+Where T1044.typ_cd =  AFDC   and T1044.unwork_rsn_cd =   %PFA   move   PA
+Where T1044.typ_cd =  AFDC   and T1044.unwork_rsn_cd =   all others   move   FS
+Where T1044.typ_cd =  COLL    and T1044.unwork_rsn_cd =   %PFA move   PC
+Where T1044.typ_cd =  COLL    and T1044.unwork_rsn_cd NOT EQUAL  %PFA move   CO
+Where T1044.typ_cd =  DIRP   move   DP
+Where T1044.typ_cd =  FC or FCE   move   FS
+Where T1044.typ_cd =  MAO  and T1044.status_cd = CTRM or CLSD and T1044.unwork_rsn_cd =   %PFA   move   PA else move FS
+Where T1044.typ_cd =  MAO  and T1044.unwork_rsn_cd =   %PFA   move   MO
+Where T1044.typ_cd =  MAO   and T1044.unwork_rsn_cd =   UPEI   move   PT 
+Where T1044.typ_cd =   MAO  and none of the above MAO rules apply move MO
+Where T1044.typ_cd =  NPA   and T1044.unwork_rsn_cd =   %PFA   move   PA else move FS
+Where T1044.typ_cd =  SARR   move   FS",Length
+File_ID,Char(10),T1044_CASE,FAM_COURT_FILE,Char(11),,,H,"Rule:File ID for VFDEM File id where no fam_court_file
+File id where no fam_court_file	Where  T1044.fam_court_file is blank, null, or all zeroes default the VCASE.file_id to the most recent T1061.file_num_txt  where T1061.file_num_txt is not equal to spaces.
+Where  T1044.fam_court_file is blank, null, or all zeroes
+and the most recent T1061.file_num_txt   is equal to spaces  AND a court order exists
+default the VCASE.file_id to CONV followed by case_idno.
+Where  T1044.fam_court_file is blank, null, or all zeroes and the above conditions are not met, move space.
+",Length
+ApplicationFee_CODE,Char(1),T1044_CASE,IVD_TYP_CD,Char(4),,,L,Rule:If the ivd_typ_cd = NPA and the PREV_IVD_TYP_CD is spaces or nulls move P else move space,Length
+FeePaid_DATE,"Date(3,0)",,,,,low dates,,,
+ServiceRequested_CODE,Char(1),,,,X,,L,Rule:If case type is H (Non IV-D) move N else move F,
+FeeCheckNo_TEXT,Char(20),,,,,space,,,
+ReasonFeeWaived_CODE,Char(2),,,,,space,,,
+StatusEnforce_CODE,Char(4),T1044_CASE,UNWORK_RSN_CD,Char(4),,,,VCASE enforcement status code table lookup,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,

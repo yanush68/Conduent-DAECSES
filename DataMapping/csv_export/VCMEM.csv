@@ -1,0 +1,50 @@
+VCMEM Output Table,,,,,,,,,
+Target Column,Type,Source Table,Source Column,Type,Computed,Default,Rule Complexity,Rule/Crosswalk/Comment,Issue?
+General Table Rules,,,,,,,H,Deleted Rule,
+Case_IDNO,"Numb(6,0)",T1082_CASE_PART,CASE_NUM,"Numb(6,0)",,,,,
+MemberMci_IDNO,"Numb(10,0)",T1082_CASE_PART,MCI_NUM,"Numb(10,0)",,,,Defaulting T0540 values so the rule doesn't apply. Use 1082 field,
+CaseRelationship_CODE,Char(1),T1082_CASE_PART,RELATION_CD,Char(4),,,M,"Rule:Where T1082.typ_cd = OTHR and T1082.relation_cd = 'CHLD' move D.
+Where T1082.typ_cd = OTHR and T1082.relation_cd = 'FATH' move P.
+Where T1082.typ_cd = OTHR and T1082.relation_cd = 'GUAR' move G.
+Where T1082.typ_cd = AP and T1082.relation_cd = 'FATH' move A
+Where T1082_typ_cd = OTHR and T1082_relation_cd = 'BTEX' move P.
+Where an unknown NCP exists (MCI number of 999995) and a valid NCP exists, do NOT convert the unknown NCP.",Length
+CaseMemberStatus_CODE,Char(1),T1082_CASE_PART,STATUS_CD,Char(1),,,L,"Rule:Default  to A for NCPs and CPs
+Where T1082_typ_cd = OTHR and T1082.relation_cd = BTEX, move I.
+Where T1082_typ_cd = OTHR and T1082.relation_cd = FATH, move I.",
+CpRelationshipToChild_CODE,Char(3),T1082_CASE_PART,RELATION_CD,Char(4),,space,M,"Rule:This field is populated only for DPs.
+Where T1082.typ_cd =  CLI and T1082.relation_cd = MOTH move MTR
+Where T1082.typ_cd =  CLI  and T1082.relation_cd = FATH move FTR
+Where T1082.typ_cd =  CLI  and T1082.relation_cd = GPAR and sex if female,  move GRM
+Where T1082.typ_cd =  CLI  and T1082.relation_cd = GPAR and sex if male,  move GRF
+If none of the above, move NOT",
+NcpRelationshipToChild_CODE,Char(3),T1082_CASE_PART,RELATION_CD,Char(4),,space,M,"Rule:This field is populated only for DPs.
+Where T1082.typ_cd =  AP and T1082.relation_cd = MOTH move MTR
+Where T1082.typ_cd =  AP  and T1082.relation_cd = FATH move FTR
+If T1082.typ_CD = AP and T1082.relation_cd not equal MOTH or FATH, check the CP:
+Where T1082.typ_cd = CLI and T1082.relation_cd = MOTH move FTR
+Where T1082.typ_cd = CLI  and T1082.relation_cd = FATH move MTR
+If neither of the above is true, move spaces.",
+BenchWarrant_INDC,Char(1),,,,,space,,,
+Applicant_CODE,Char(1),,,,X,,L,"Rule:If the member relationship code is set to C (CP) move Y
+else move N",
+BeginValidity_DATE,"Date(3,0)",,,,,conversion date,,,
+WorkerUpdate_ID,Char(30),,,,,conversion,,,
+TransactionEventSeq_NUMB,"Numb(19,0)",,,,X,,,Conversion generated number,
+Update_DTTM,"Date(8,7)",,,,,conversion date,,,
+FAMILYVIOLENCE_INDC,Char(1),,,,X,,L,"Rule:Default to N unless:
+If T1044.UNWORK_RSN_CD in ('WPFA','UPFA')  
+move 'Y' for all  DPs,  CP, and NCP.",
+FAMILYVIOLENCE_DATE,"Date(8,0)",T1044_CASE,UNWORK_RSN_EFF_DT,"Date(3,0)",X,,L,"Rule:If the FAMILYVIOLENCE_INDC has been set to Y,
+move T1044.UNWORK_RSN_EFF_DT
+else move low date.",
+TYPEFAMILYVIOLENCE_CODE,Char(2),,,,X,,L,"Rule:Where FAMILYVIOLENCE_INDC = N, move DE (DEFAULT- FAMILY VIOLENCE NOT AN ISSUE)
+else
+Fetch the  T1049 using the case number and if field PFA_IND is set to Y, move FA (PFA Order Entered)
+else move CF (Member  Requests Family Violence Protection)",
+REASONMEMBERSTATUS_CODE,Char(2),,,,X,space,L,"Rule:Where T1082_typ_cd = OTHR and T1082.relation_cd = BTEX, move X.
+LOV  Member status reason
+REFM  GENR/ MSTR",
+,,,,,,,,,
+,,,,,,,,,
+,,,,,,,,,
