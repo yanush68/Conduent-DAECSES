@@ -1,0 +1,12 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "DataPipeline",
+    "displayName": "pl_DACSES_Ingest_Only",
+    "description": ""
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "10e601c3-c1c7-41d8-9160-850d15061340"
+  }
+}
